@@ -323,6 +323,8 @@ if (androidSdkAvailable) {
         // AGP creates the config for the android variant.
         add("compileOnly", "org.projectlombok:lombok:1.18.30")
         add("annotationProcessor", "org.projectlombok:lombok:1.18.30")
+        // JVM unit tests for the konkr flavor's framework-free logic (src/testKonkr).
+        add("testImplementation", libs.junit)
     }
 }
 
@@ -377,6 +379,46 @@ if (androidSdkAvailable) {
             buildConfig = true
         }
 
+        // Device builds. `standard` is the regular APK and is configured exactly as before
+        // flavors existed. `konkr` targets the Konkr Pocket Fit Elite handheld: it installs
+        // alongside the standard app under its own application id, adds gamepad + analog
+        // stick cursor support and device performance tuning (all in src/konkr), ships
+        // arm64 only, and runs without Firebase.
+        //
+        // Shared code reaches flavor-specific behavior through net.runelite.mp.flavor.FlavorHooks,
+        // which each flavor's source set defines; the standard copy is all no-ops.
+        flavorDimensions += "device"
+        productFlavors {
+            create("standard") {
+                dimension = "device"
+                isDefault = true
+                buildConfigField("boolean", "FIREBASE_ENABLED", "true")
+            }
+            create("konkr") {
+                dimension = "device"
+                applicationIdSuffix = ".konkr"
+                versionNameSuffix = "-konkr"
+                // Firebase only knows net.runelite.mp. src/konkr/google-services.json is a
+                // placeholder that keeps the google-services plugin happy; the konkr manifest
+                // removes FirebaseInitProvider so the SDK never starts, and this flag keeps
+                // AndroidCrashReporter from touching it.
+                buildConfigField("boolean", "FIREBASE_ENABLED", "false")
+                ndk {
+                    abiFilters.clear()
+                    abiFilters += "arm64-v8a"
+                }
+                // No real Firebase app to send release mappings to. Looked up by name so the
+                // build script doesn't compile against the Crashlytics plugin's classes.
+                val crashlytics = (this as ExtensionAware).extensions.findByName("firebaseCrashlytics")
+                val setUpload = crashlytics?.javaClass?.methods?.firstOrNull { it.name == "setMappingFileUploadEnabled" }
+                if (setUpload != null) {
+                    setUpload.invoke(crashlytics, false)
+                } else {
+                    logger.warn("runelite-mp konkr: Crashlytics extension not found; mapping upload left as configured")
+                }
+            }
+        }
+
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
@@ -395,6 +437,20 @@ if (androidSdkAvailable) {
             res.srcDirs("src/androidMain/res")
             assets.srcDirs("src/androidMain/assets")
             resources.srcDirs("src/androidMain/resources")
+        }
+        sourceSets.named("standard") {
+            java.srcDirs("src/standard/kotlin")
+            kotlin.srcDirs("src/standard/kotlin")
+        }
+        sourceSets.named("konkr") {
+            manifest.srcFile("src/konkr/AndroidManifest.xml")
+            java.srcDirs("src/konkr/kotlin")
+            kotlin.srcDirs("src/konkr/kotlin")
+            res.srcDirs("src/konkr/res")
+        }
+        sourceSets.named("testKonkr") {
+            java.srcDirs("src/testKonkr/kotlin")
+            kotlin.srcDirs("src/testKonkr/kotlin")
         }
 
         // Release signing.

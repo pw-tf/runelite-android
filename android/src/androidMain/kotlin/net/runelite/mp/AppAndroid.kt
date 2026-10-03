@@ -302,7 +302,11 @@ private fun GameViewport(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(Color.Black)
-            .onSizeChanged { boxSize = it }
+            .onSizeChanged {
+                boxSize = it
+                RenderedFrame.boxWidth = it.width
+                RenderedFrame.boxHeight = it.height
+            }
             // Pointer-tracking: forward every position update (hover OR while finger held
             // down) to MOUSE_MOVED so cursor-tracked UI (tooltips, hover highlights, the
             // OSRS "look at" reticle, world-map cursor coords) keeps tracking the finger
@@ -507,6 +511,13 @@ private fun GameViewport(modifier: Modifier = Modifier) {
                         // create its EGL window surface against it. The host caches the
                         // view internally and re-registers callbacks if reattached.
                         net.runelite.client.plugins.gpugles.GlesHost.get().attachSurfaceView(view)
+                        view.holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: android.view.SurfaceHolder) {
+                                net.runelite.mp.flavor.FlavorHooks.onGlSurfaceCreated(holder.surface)
+                            }
+                            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {}
+                            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {}
+                        })
                     }
                 },
                 modifier = Modifier
@@ -523,6 +534,8 @@ private fun GameViewport(modifier: Modifier = Modifier) {
                 contentScale = ContentScale.Fit,
             )
         }
+        // Flavor overlay (the konkr build's stick cursor). Above the game, below the splash.
+        net.runelite.mp.flavor.FlavorHooks.GameOverlay()
         // Compose splash overlays everything until the AWT splash dismisses. Replaces the
         // tiny shadow JFrame with a full-screen branded splash so the user sees the actual
         // boot stages on a phone-readable canvas.
@@ -701,6 +714,9 @@ private const val BUTTON3 = java.awt.event.MouseEvent.BUTTON3
 private object RenderedFrame {
     @Volatile var width = 0
     @Volatile var height = 0
+    /** Size of the [GameViewport] box the bitmap is letterboxed into. */
+    @Volatile var boxWidth = 0
+    @Volatile var boxHeight = 0
 }
 
 /** Maps a Compose offset (Box-local pixels) into the AWT Window's coordinate space,
@@ -766,6 +782,7 @@ private fun hitTest(window: java.awt.Window, winX: Int, winY: Int): Hit? {
 private fun dispatchMove(offset: Offset, boxSize: IntSize) {
     val window = java.awt.Window.primaryFrame() ?: return
     val (winX, winY) = composeToWindow(offset, boxSize, window) ?: return
+    AwtPointer.noteTouch(winX, winY)
     val hit = hitTest(window, winX, winY) ?: return
     val target = walkUpToListener(hit.comp) ?: hit.comp
     val (lx, ly) = localCoords(target, winX, winY)
@@ -778,6 +795,7 @@ private fun dispatchMove(offset: Offset, boxSize: IntSize) {
 private fun dispatchClick(offset: Offset, boxSize: IntSize, button: Int) {
     val window = java.awt.Window.primaryFrame() ?: return
     val (winX, winY) = composeToWindow(offset, boxSize, window) ?: return
+    AwtPointer.noteTouch(winX, winY)
     val hit = hitTest(window, winX, winY) ?: return
     val target = walkUpToListener(hit.comp) ?: hit.comp
     val (lx, ly) = localCoords(target, winX, winY)
@@ -785,10 +803,13 @@ private fun dispatchClick(offset: Offset, boxSize: IntSize, button: Int) {
     fireMouse(target, java.awt.event.MouseEvent.MOUSE_PRESSED, lx, ly, button, true)
     fireMouse(target, java.awt.event.MouseEvent.MOUSE_RELEASED, lx, ly, button, false)
     fireMouse(target, java.awt.event.MouseEvent.MOUSE_CLICKED, lx, ly, button, false)
+    clickSwingDirect(hit.comp, winX, winY, button)
+}
 
-    // Compose-side widget helpers — these aren't reachable via AWT MouseListener so we
-    // call their high-level click APIs directly when the hit lands on them.
-    when (val direct = hit.comp) {
+/** Compose-side widget helpers — these aren't reachable via AWT MouseListener so we
+ *  call their high-level click APIs directly when a click lands on them. */
+private fun clickSwingDirect(comp: java.awt.Component, winX: Int, winY: Int, button: Int) {
+    when (val direct = comp) {
         is javax.swing.JTabbedPane -> {
             val (dx, dy) = localCoords(direct, winX, winY)
             val idx = direct.indexAtLocation(dx, dy)
@@ -960,6 +981,11 @@ private fun dispatchWheel(pos: Offset, boxSize: IntSize, notches: Int) {
     if (notches == 0) return
     val window = java.awt.Window.primaryFrame() ?: return
     val (winX, winY) = composeToWindow(pos, boxSize, window) ?: return
+    dispatchWheelAt(window, winX, winY, notches)
+}
+
+private fun dispatchWheelAt(window: java.awt.Window, winX: Int, winY: Int, notches: Int) {
+    if (notches == 0) return
     val hit = hitTest(window, winX, winY) ?: return
     val target = ancestorChain(hit.comp).firstOrNull {
         it is java.awt.Canvas || it is javax.swing.JScrollPane
@@ -1117,4 +1143,129 @@ private fun fireMouse(target: java.awt.Component, id: Int, x: Int, y: Int, butto
             mods, x, y, 1, button == BUTTON3, button,
         ),
     )
+}
+
+/**
+ * Window-space mouse driver for pointers that aren't a finger on the viewport: the konkr
+ * flavor's analog-stick cursor. Unlike the touch path, press and release are separate
+ * calls, so a held button drags (inventory items, middle-button camera, scrollbars) the
+ * way a desktop mouse does. Coordinates are AWT window pixels.
+ *
+ * Main thread only, like the touch handlers: dispatch into the AWT shim is synchronous.
+ */
+internal object AwtPointer {
+    private class Press(
+        val target: java.awt.Component,
+        val hitComp: java.awt.Component,
+        val originAbsX: Int,
+        val originAbsY: Int,
+        val startX: Int,
+        val startY: Int,
+    ) {
+        var moved = false
+    }
+
+    /** Held buttons in press order; drags go to the most recent one. */
+    private val held = LinkedHashMap<Int, Press>()
+
+    /** Movement (window px) after which a press/release pair no longer counts as a click. */
+    private const val CLICK_SLOP = 4
+
+    /** Window position of the last touch on the viewport, so a cursor can follow it.
+     *  [touchSerial] changes on every touch. */
+    @Volatile var touchSerial = 0
+        private set
+    @Volatile var touchX = 0
+        private set
+    @Volatile var touchY = 0
+        private set
+
+    internal fun noteTouch(wx: Int, wy: Int) {
+        touchX = wx
+        touchY = wy
+        touchSerial++
+    }
+
+    /** Size of the live AWT window, or null before it exists. */
+    fun windowSize(): IntSize? {
+        val window = java.awt.Window.primaryFrame() ?: return null
+        if (window.width <= 0 || window.height <= 0) return null
+        return IntSize(window.width, window.height)
+    }
+
+    /** Bounds of the game canvas in window pixels, or null before it is attached. */
+    fun canvasBounds(): java.awt.Rectangle? = java.awt.Canvas.latest()?.boundsInWindow
+
+    /** Inverse of [composeToWindow]: window pixels to [GameViewport]-local Compose pixels. */
+    fun windowToCompose(wx: Float, wy: Float): Offset? {
+        val window = java.awt.Window.primaryFrame() ?: return null
+        val bw = RenderedFrame.boxWidth.toFloat()
+        val bh = RenderedFrame.boxHeight.toFloat()
+        val winW = window.width.toFloat()
+        val winH = window.height.toFloat()
+        if (bw <= 0f || bh <= 0f || winW <= 0f || winH <= 0f) return null
+        val ww = if (RenderedFrame.width > 0) RenderedFrame.width.toFloat() else winW
+        val wh = if (RenderedFrame.height > 0) RenderedFrame.height.toFloat() else winH
+        val scale = minOf(bw / ww, bh / wh)
+        val padX = (bw - ww * scale) / 2f
+        val padY = (bh - wh * scale) / 2f
+        return Offset(padX + wx * (ww / winW) * scale, padY + wy * (wh / winH) * scale)
+    }
+
+    fun isHeld(button: Int): Boolean = held.containsKey(button)
+
+    /** MOUSE_MOVED, or MOUSE_DRAGGED to the pressed component while a button is held. */
+    fun move(wx: Int, wy: Int) {
+        val press = held.entries.lastOrNull()
+        if (press == null) {
+            val window = java.awt.Window.primaryFrame() ?: return
+            val hit = hitTest(window, wx, wy) ?: return
+            val target = walkUpToListener(hit.comp) ?: hit.comp
+            val (lx, ly) = localCoords(target, wx, wy)
+            fireMouse(target, java.awt.event.MouseEvent.MOUSE_MOVED, lx, ly, java.awt.event.MouseEvent.NOBUTTON, false)
+            return
+        }
+        val p = press.value
+        if (kotlin.math.abs(wx - p.startX) > CLICK_SLOP || kotlin.math.abs(wy - p.startY) > CLICK_SLOP) {
+            p.moved = true
+        }
+        fireMouse(p.target, java.awt.event.MouseEvent.MOUSE_DRAGGED,
+            wx - p.originAbsX, wy - p.originAbsY, press.key, true)
+    }
+
+    fun press(wx: Int, wy: Int, button: Int) {
+        release(wx, wy, button)
+        val window = java.awt.Window.primaryFrame() ?: return
+        val hit = hitTest(window, wx, wy) ?: return
+        val target = walkUpToListener(hit.comp) ?: hit.comp
+        val origin = hitTestExact(window, target) ?: return
+        val lx = wx - origin.absX
+        val ly = wy - origin.absY
+        fireMouse(target, java.awt.event.MouseEvent.MOUSE_MOVED, lx, ly, java.awt.event.MouseEvent.NOBUTTON, false)
+        fireMouse(target, java.awt.event.MouseEvent.MOUSE_PRESSED, lx, ly, button, true)
+        held[button] = Press(target, hit.comp, origin.absX, origin.absY, wx, wy)
+    }
+
+    /** Release [button] if held. A press that stayed put also gets MOUSE_CLICKED. */
+    fun release(wx: Int, wy: Int, button: Int) {
+        val p = held.remove(button) ?: return
+        val lx = wx - p.originAbsX
+        val ly = wy - p.originAbsY
+        fireMouse(p.target, java.awt.event.MouseEvent.MOUSE_RELEASED, lx, ly, button, false)
+        if (!p.moved) {
+            fireMouse(p.target, java.awt.event.MouseEvent.MOUSE_CLICKED, lx, ly, button, false)
+            clickSwingDirect(p.hitComp, wx, wy, button)
+        }
+    }
+
+    /** Release every held button, e.g. when the controller disconnects mid-press. */
+    fun releaseAll(wx: Int, wy: Int) {
+        for (button in held.keys.toList()) release(wx, wy, button)
+    }
+
+    /** Wheel notches at a window position. Negative is wheel-up (OSRS zoom in). */
+    fun wheel(wx: Int, wy: Int, notches: Int) {
+        val window = java.awt.Window.primaryFrame() ?: return
+        dispatchWheelAt(window, wx, wy, notches)
+    }
 }

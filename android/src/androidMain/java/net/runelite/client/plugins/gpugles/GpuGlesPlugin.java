@@ -201,6 +201,12 @@ public class GpuGlesPlugin extends Plugin implements DrawCallbacks
 	 *  from whatever the last logged-in frame left behind. */
 	private boolean scenePaintedThisFrame;
 
+	// Frame timing handed to the build flavor (FlavorHooks.onFrameRendered), which on the
+	// konkr build feeds Android's PerformanceHintManager. frameWorkStartNs is the first GL
+	// callback of the frame; 0 between frames.
+	private long frameWorkStartNs;
+	private Thread hintedRenderThread;
+
 	/**
 	 * One of these per render thread. The engine can farm dynamic-object uploads out to
 	 * N worker threads (see {@link #setupGpuFlags()}); each gets its own transient
@@ -1218,6 +1224,7 @@ public class GpuGlesPlugin extends Plugin implements DrawCallbacks
 	{
 		GameState gameState = client.getGameState();
 		if (gameState == GameState.STARTING) return;
+		if (frameWorkStartNs == 0) frameWorkStartNs = System.nanoTime();
 
 		// EGL is created lazily — first draw() after the SurfaceView is alive
 		// brings the context up.
@@ -1338,6 +1345,15 @@ public class GpuGlesPlugin extends Plugin implements DrawCallbacks
 		GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
 
 		drawUi(overlayColor, canvasWidth, canvasHeight, sceneMode);
+
+		Thread current = Thread.currentThread();
+		if (current != hintedRenderThread)
+		{
+			hintedRenderThread = current;
+			net.runelite.mp.flavor.FlavorHooks.onRenderThreadStart();
+		}
+		net.runelite.mp.flavor.FlavorHooks.onFrameRendered(System.nanoTime() - frameWorkStartNs);
+		frameWorkStartNs = 0;
 
 		GlesHost.get().swapBuffers();
 	}
@@ -1645,6 +1661,7 @@ public class GpuGlesPlugin extends Plugin implements DrawCallbacks
 	private void preSceneDrawToplevel(Scene scene,
 		float cameraX, float cameraY, float cameraZ, float cameraPitch, float cameraYaw)
 	{
+		if (frameWorkStartNs == 0) frameWorkStartNs = System.nanoTime();
 		scene.setDrawDistance(getDrawDistance());
 
 		// UBO update — camera position + angles. The scene vertex shader reads

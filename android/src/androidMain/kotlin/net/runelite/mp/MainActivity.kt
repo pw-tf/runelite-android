@@ -35,8 +35,8 @@ class MainActivity : ComponentActivity() {
         // Install before any other init so a crash inside the System.setProperty calls
         // below (or anything else this activity touches) still reaches Crashlytics. The
         // SDK auto-installs its uncaught handler on first getInstance(); this call also
-        // stamps device/app context as custom keys.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        // stamps device/app context as custom keys. Flavors built without Firebase skip it.
+        if (BuildConfig.FIREBASE_ENABLED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             AndroidCrashReporter.install(applicationContext)
         }
 
@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
                 100
             )
         }
+
+        net.runelite.mp.flavor.FlavorHooks.onCreate(this)
 
         setContent { AndroidApp() }
     }
@@ -109,6 +111,11 @@ class MainActivity : ComponentActivity() {
      */
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Flavor input (gamepad buttons on the konkr build) goes first: it only claims
+        // events from controllers, which never belong to a text field.
+        if (net.runelite.mp.flavor.FlavorHooks.dispatchKeyEvent(event)) {
+            return true
+        }
         if (editorWantsKeys()) {
             return super.dispatchKeyEvent(event)
         }
@@ -116,6 +123,13 @@ class MainActivity : ComponentActivity() {
             return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (net.runelite.mp.flavor.FlavorHooks.dispatchGenericMotionEvent(event)) {
+            return true
+        }
+        return super.dispatchGenericMotionEvent(event)
     }
 
     /**

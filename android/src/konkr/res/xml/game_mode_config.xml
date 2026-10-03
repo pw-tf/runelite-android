@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Opts into Android 13+ Game Mode. The app reads GameManager.getGameMode() itself and
+     picks its own performance profile (see konkr/PerformanceManager), so the platform's
+     downscaling / FPS interventions are left off. -->
+<game-mode-config xmlns:android="http://schemas.android.com/apk/res/android"
+    android:supportsPerformanceGameMode="true"
+    android:supportsBatteryGameMode="true"
+    android:allowGameAngleDriver="false"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="false" />

@@ -127,6 +127,23 @@ internal fun NavIconStrip(
         ModifierChip(label = "⌨️", state = net.runelite.mp.ui.bridge.SoftKeyboardController.isKeyboardVisible.value) {
             net.runelite.mp.ui.bridge.SoftKeyboardController.toggle()
         }
+        // Panels contributed by the build flavor (e.g. controller settings on konkr).
+        for (panel in net.runelite.mp.flavor.FlavorHooks.panels)
+        {
+            Spacer(Modifier.height(4.dp))
+            val isActive = selected == panel.key
+            IconButton(label = panel.label, tooltip = panel.key, active = isActive, iconBitmap = null) {
+                if (isActive)
+                {
+                    onSelect(null)
+                }
+                else
+                {
+                    net.runelite.mp.ui.bridge.NavBarBridge.closePanels()
+                    onSelect(panel.key)
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         // RL-registered nav buttons. The list scrolls when it overflows the column height.
         LazyColumn(

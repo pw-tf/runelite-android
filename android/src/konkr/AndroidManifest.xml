@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Konkr Pocket Fit Elite overlay, merged on top of src/androidMain/AndroidManifest.xml. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:label="RuneLite (Konkr)"
+        android:appCategory="game"
+        tools:replace="android:label">
+
+        <!-- Android 13+ Game Mode (performance / battery profiles from the system game
+             dashboard). Ignored on older releases. -->
+        <meta-data
+            android:name="android.game_mode_config"
+            android:resource="@xml/game_mode_config" />
+
+        <!-- Firebase is off in this build: the placeholder google-services.json has no real
+             project behind it, so the SDK must never initialize. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_analytics_collection_deactivated"
+            android:value="true" />
+
+        <!-- `navigation` and `uiMode` change when a gamepad connects, disconnects or wakes
+             from sleep. Without them here the activity is recreated and the client would be
+             booted a second time inside the same process. -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|screenLayout|smallestScreenSize|navigation|uiMode"
+            tools:replace="android:configChanges" />
+    </application>
+</manifest>

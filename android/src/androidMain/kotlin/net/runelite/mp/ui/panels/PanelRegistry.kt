@@ -14,7 +14,7 @@ import androidx.compose.runtime.Composable
  */
 internal object PanelRegistry
 {
-    private val byTooltip: Map<String, @Composable () -> Unit> = mapOf(
+    private val builtIn: Map<String, @Composable () -> Unit> = mapOf(
         "Notes" to { NotesPanel() },
         "Screen Markers" to { ScreenMarkersPanel() },
         "XP Tracker" to { XpTrackerPanel() },
@@ -34,6 +34,10 @@ internal object PanelRegistry
         // "Resource packs hub"; route it to our Compose hub browser.
         "Resource packs hub" to { ResourcePacksPanel() },
     )
+
+    /** Built-in panels plus any the build flavor contributes (see FlavorHooks). */
+    private val byTooltip: Map<String, @Composable () -> Unit> =
+        builtIn + net.runelite.mp.flavor.FlavorHooks.panels.associate { it.key to it.content }
 
     fun hasPanel(key: String): Boolean = byTooltip.containsKey(key)
 

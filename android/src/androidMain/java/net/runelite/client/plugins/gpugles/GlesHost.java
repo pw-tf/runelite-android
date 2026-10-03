@@ -383,9 +383,13 @@ public final class GlesHost
 
 			Log.e(TAG, msg);
 
-			FirebaseCrashlytics.getInstance().log(msg);
-			FirebaseCrashlytics.getInstance().recordException(
-					new RuntimeException(msg));
+			// Flavors without Firebase never initialize it; getInstance() would throw.
+			if (net.runelite.mp.BuildConfig.FIREBASE_ENABLED)
+			{
+				FirebaseCrashlytics.getInstance().log(msg);
+				FirebaseCrashlytics.getInstance().recordException(
+						new RuntimeException(msg));
+			}
 			return null;
 		}
 
