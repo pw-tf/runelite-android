@@ -13,9 +13,13 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Entry point for controller input on the konkr build. [MainActivity] hands every key and
- * generic motion event here first (through FlavorHooks); anything that didn't come from a
- * gamepad is declined so touch, keyboards and the IME keep their normal paths.
+ * Entry point for controller input on the konkr build. Each physical button press maps to
+ * at most one [Action] (see [ActionExecutor]); OS key auto-repeat is swallowed, and a press
+ * reported both as a key and as an axis is only acted on once.
+ *
+ * [MainActivity] hands every key and generic motion event here first (through
+ * FlavorHooks); anything that didn't come from a gamepad is declined so touch, keyboards
+ * and the IME keep their normal paths.
  *
  * Buttons go straight to [ActionExecutor]. Stick axes are only cached here; [StickCursor]
  * reads them once per display frame, which keeps cursor speed independent of how often the
@@ -149,6 +153,9 @@ object GamepadInput
             KeyEvent.ACTION_DOWN ->
             {
                 if (e.repeatCount > 0) return held.containsKey(code) || gamepadKey
+                // Already held from this button's analog axis (pads that report a D-pad or
+                // trigger both ways): one physical press, so no second action.
+                if (held.containsKey(code)) return true
                 val action = cfg.actionFor(code)
                     // Unbound gamepad buttons are still swallowed: otherwise Android's
                     // fallback turns e.g. B into BACK, which closes panels.
@@ -235,6 +242,8 @@ object GamepadInput
         if (edge == 0 || code in realKeys) return
         if (edge > 0)
         {
+            // Already held from the key event for the same press.
+            if (held.containsKey(code)) return
             val listener = capture.value
             if (listener != null)
             {

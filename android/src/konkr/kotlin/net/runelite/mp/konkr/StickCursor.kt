@@ -11,6 +11,13 @@ import net.runelite.mp.AwtPointer
  * (camera, scroll). [frame] is driven from the overlay's `withFrameNanos` loop on the main
  * thread, so it runs once per display refresh.
  *
+ * One input, one action:
+ *  - Cursor: the pointer moves only while the stick is deflected, at a speed set by the
+ *    current deflection (like mouse sensitivity). No momentum, smoothing, snapping or
+ *    targeting, and the pointer never moves on its own.
+ *  - Camera: deflecting holds an arrow key, centering releases it. One key, held.
+ *  - Scroll: each flick past the threshold is one wheel notch; holding does not repeat.
+ *
  * Positions are AWT window pixels, the same space [AwtPointer] dispatches in.
  */
 object StickCursor
@@ -36,7 +43,9 @@ object StickCursor
     val x: Int get() = integrator.x.toInt()
     val y: Int get() = integrator.y.toInt()
 
-    private val scrollAcc = RateAccumulator()
+    /** Scroll-role stick: one notch per flick in each direction. */
+    private val scrollUpLatch = AxisLatch(SCROLL_ON)
+    private val scrollDownLatch = AxisLatch(SCROLL_ON)
 
     /** Camera arrow keys currently held by a camera-role stick. */
     private val cameraKeys = linkedMapOf(
@@ -48,7 +57,7 @@ object StickCursor
 
     private const val CAMERA_ON = 0.45f
     private const val AUTO_HIDE_NS = 3_000_000_000L
-    private const val MAX_SCROLL_PER_SECOND = 14f
+    private const val SCROLL_ON = 0.6f
 
     fun toggleEnabled()
     {
@@ -57,8 +66,18 @@ object StickCursor
         lastActivityNs = System.nanoTime()
     }
 
-    /** Put the pointer in the middle of the game view, roughly over the player. */
+    /** [Action.RecenterCursor]: put the pointer in the middle of the game view, roughly
+     *  over the player. One press, one pointer move. */
     fun recenter()
+    {
+        place()
+        AwtPointer.move(x, y)
+        onButtonActivity()
+    }
+
+    /** Initial pointer position. Only sets where the drawn pointer is; nothing is sent to
+     *  the game until the player moves the stick or presses a button. */
+    private fun place()
     {
         val win = AwtPointer.windowSize() ?: return
         val canvas = AwtPointer.canvasBounds()
@@ -72,14 +91,12 @@ object StickCursor
         }
         initialized = true
         publish()
-        AwtPointer.move(x, y)
-        onButtonActivity()
     }
 
     /** A mouse action fired from a button: show the pointer so the click has a visible spot. */
     fun onButtonActivity()
     {
-        if (!initialized) recenter()
+        if (!initialized) place()
         lastActivityNs = System.nanoTime()
         if (enabled.value) visible.value = true
     }
@@ -96,7 +113,7 @@ object StickCursor
             updateCamera(0f, 0f)
             return
         }
-        if (!initialized) recenter()
+        if (!initialized) place()
         if (win.width != lastWinW || win.height != lastWinH)
         {
             // The frame resizes after boot (splash → game) and with the sidebar; keep the
@@ -184,10 +201,9 @@ object StickCursor
             if (cfg.cameraInvertY) -camY else camY,
         )
 
-        val notches = scrollAcc.step((if (cfg.scrollInvert) -scroll else scroll) * MAX_SCROLL_PER_SECOND, dt)
-        if (notches != 0) AwtPointer.wheel(x, y, notches)
-
-        ActionExecutor.tick(nowNs)
+        val sv = if (cfg.scrollInvert) -scroll else scroll
+        if (scrollUpLatch.update(-sv) > 0) AwtPointer.wheel(x, y, -1)
+        if (scrollDownLatch.update(sv) > 0) AwtPointer.wheel(x, y, 1)
 
         if (visible.value && (!enabled.value || (cfg.cursorAutoHide && nowNs - lastActivityNs > AUTO_HIDE_NS)))
         {

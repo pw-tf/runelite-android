@@ -78,25 +78,3 @@ class AxisLatch(private val onAt: Float, private val offAt: Float = onAt * 0.7f)
         return 0
     }
 }
-
-/**
- * Accumulates a continuous rate (events/s) into whole events, e.g. scroll notches from a
- * stick held at partial deflection.
- */
-class RateAccumulator
-{
-    private var acc = 0f
-
-    fun step(ratePerSecond: Float, dtSeconds: Float): Int
-    {
-        if (ratePerSecond == 0f)
-        {
-            acc = 0f
-            return 0
-        }
-        acc += ratePerSecond * dtSeconds
-        val whole = acc.toInt()
-        acc -= whole
-        return whole
-    }
-}

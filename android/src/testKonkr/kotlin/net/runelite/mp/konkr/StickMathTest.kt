@@ -67,19 +67,4 @@ class StickMathTest
         assertEquals(-1, l.update(0.2f))
         assertEquals(0, l.update(0.2f))
     }
-
-    @Test
-    fun rateAccumulatorEmitsWholeEventsBothWays()
-    {
-        val r = RateAccumulator()
-        var total = 0
-        repeat(60) { total += r.step(10f, 1f / 60f) }
-        // 10/s for one second; float rounding may leave the last one just short.
-        assertTrue("got $total", total in 9..10)
-        val r2 = RateAccumulator()
-        var neg = 0
-        repeat(10) { neg += r2.step(-20f, 0.05f) }
-        assertEquals(-10, neg)
-        assertEquals(0, r2.step(0f, 1f))
-    }
 }
