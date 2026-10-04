@@ -1,0 +1,110 @@
+name: Sync upstream
+
+# Keeps main in step with zeruth/runelite-android. Upstream bumps the RuneLite version
+# when Jagex updates OSRS; when this merges anything new, it checks that the Konkr build
+# still compiles and passes its tests, pushes the merge to main and publishes a release.
+#
+# A merge conflict (upstream changed lines the Konkr changes also touch) or a failing
+# build stops the run before anything is pushed. GitHub emails the repo owner about the
+# failed run; resolve the merge by hand and push to main.
+#
+# The default GITHUB_TOKEN can't push commits that change files under .github/workflows.
+# If upstream ever edits a workflow, add a personal access token with the "workflow" scope
+# as the SYNC_TOKEN secret, or merge that one by hand.
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+
+    env:
+      GRADLE_OPTS: "-Dfile.encoding=UTF-8"
+
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+      sha: ${{ steps.merge.outputs.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream
+        id: merge
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898738+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/zeruth/runelite-android.git
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream."
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git log --oneline HEAD..upstream/main
+          if ! git merge --no-edit -m "Merge upstream zeruth/runelite-android" upstream/main; then
+            echo "::error::Merging upstream conflicts with the Konkr changes. Resolve the merge by hand and push to main:"
+            git diff --name-only --diff-filter=U | sed 's/^/::error::  conflict: /'
+            exit 1
+          fi
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        if: steps.merge.outputs.merged == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        if: steps.merge.outputs.merged == 'true'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+
+      - name: Install Rust Android targets
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          rustup target add \
+            armv7-linux-androideabi \
+            aarch64-linux-android \
+            x86_64-linux-android \
+            i686-linux-android
+
+      - name: Fetch injected client
+        if: steps.merge.outputs.merged == 'true'
+        run: ./ci/fetch-injected-client.sh
+
+      - name: Check the merged build
+        if: steps.merge.outputs.merged == 'true'
+        run: ./gradlew --build-cache :android:testKonkrDebugUnitTest :android:assembleKonkrDebug
+
+      - name: Push to main
+        if: steps.merge.outputs.merged == 'true'
+        run: git push origin HEAD:main
+
+  release:
+    needs: sync
+    if: needs.sync.outputs.merged == 'true'
+    uses: ./.github/workflows/release-konkr.yml
+    with:
+      ref: ${{ needs.sync.outputs.sha }}
+    secrets: inherit

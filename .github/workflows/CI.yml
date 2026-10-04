@@ -47,21 +47,10 @@ jobs:
       # The injected client jar the Android build packages (data/<target>.jar) is gitignored,
       # so fetch RuneLite's published injected-client for this RuneLite version and store it
       # under the name android/build.gradle.kts expects. Skipped if the jar is already there.
+      # The injected client jar the Android build packages is gitignored; fetch RuneLite's
+      # published one for this RuneLite version.
       - name: Fetch injected client
-        run: |
-          set -euo pipefail
-          version=$(sed -n 's/^project\.build\.version=//p' gradle.properties)
-          target=$(sed -n 's/.*orElse("\(runelite-[^"]*\)").*/\1/p' android/build.gradle.kts)
-          test -n "$version" && test -n "$target"
-          dest="data/$target.jar"
-          if [ -f "$dest" ]; then
-            echo "$dest already present"
-          else
-            url="https://repo.runelite.net/net/runelite/injected-client/$version/injected-client-$version.jar"
-            echo "Fetching $url -> $dest"
-            curl -fSL --retry 3 -o "$dest" "$url"
-          fi
-          ls -l "$dest"
+        run: ./ci/fetch-injected-client.sh
 
       - name: Build and Test
         run: ./ci/build.sh
