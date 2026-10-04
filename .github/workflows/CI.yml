@@ -44,23 +44,35 @@ jobs:
             x86_64-linux-android \
             i686-linux-android
 
-      # The current injected client jar (data/runelite-1.13.0-…) is gitignored, so CI builds
-      # against the older one committed in data/. That makes this a compile check only: the
-      # APKs it produces won't work against the live game.
+      # The injected client jar the Android build packages (data/<target>.jar) is gitignored,
+      # so fetch RuneLite's published injected-client for this RuneLite version and store it
+      # under the name android/build.gradle.kts expects. Skipped if the jar is already there.
+      - name: Fetch injected client
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^project\.build\.version=//p' gradle.properties)
+          target=$(sed -n 's/.*orElse("\(runelite-[^"]*\)").*/\1/p' android/build.gradle.kts)
+          test -n "$version" && test -n "$target"
+          dest="data/$target.jar"
+          if [ -f "$dest" ]; then
+            echo "$dest already present"
+          else
+            url="https://repo.runelite.net/net/runelite/injected-client/$version/injected-client-$version.jar"
+            echo "Fetching $url -> $dest"
+            curl -fSL --retry 3 -o "$dest" "$url"
+          fi
+          ls -l "$dest"
+
       - name: Build and Test
         run: ./ci/build.sh
-        env:
-          ORG_GRADLE_PROJECT_injectedClient: runelite-1.12.39-injected-35108282871.259
 
       # ci/build.sh skips tests; run the konkr flavor's JVM unit tests on their own.
       - name: Konkr unit tests
         run: ./gradlew --build-cache :android:testKonkrDebugUnitTest
-        env:
-          ORG_GRADLE_PROJECT_injectedClient: runelite-1.12.39-injected-35108282871.259
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: runelite-android-compilecheck-${{ github.run_number }}-${{ github.run_attempt }}
+          name: runelite-android-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             **/build/outputs/apk/**/debug/*.apk
