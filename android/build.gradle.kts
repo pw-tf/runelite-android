@@ -96,7 +96,11 @@ configurations.configureEach {
     exclude(group = "org.lwjgl")
 }
 
-val target = "runelite-1.13.0-injected-36433848015.271"
+// The injected client this APK is built against, as data/<target>.jar. CI overrides it
+// (-PinjectedClient=… / ORG_GRADLE_PROJECT_injectedClient) to compile against the jar that
+// is committed in data/, because the current revision's jar is gitignored.
+val target = providers.gradleProperty("injectedClient")
+    .orElse("runelite-1.13.0-injected-36433848015.271").get()
 
 // --------------------------------------------------------------------------------------
 // rewriteLauncherEnv: makes the injected client read its JX_* launcher credentials from

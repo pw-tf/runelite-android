@@ -44,12 +44,23 @@ jobs:
             x86_64-linux-android \
             i686-linux-android
 
+      # The current injected client jar (data/runelite-1.13.0-…) is gitignored, so CI builds
+      # against the older one committed in data/. That makes this a compile check only: the
+      # APKs it produces won't work against the live game.
       - name: Build and Test
         run: ./ci/build.sh
+        env:
+          ORG_GRADLE_PROJECT_injectedClient: runelite-1.12.39-injected-35108282871.259
+
+      # ci/build.sh skips tests; run the konkr flavor's JVM unit tests on their own.
+      - name: Konkr unit tests
+        run: ./gradlew --build-cache :android:testKonkrDebugUnitTest
+        env:
+          ORG_GRADLE_PROJECT_injectedClient: runelite-1.12.39-injected-35108282871.259
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: runelite-android-${{ github.run_number }}-${{ github.run_attempt }}
+          name: runelite-android-compilecheck-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             **/build/outputs/apk/**/debug/*.apk
