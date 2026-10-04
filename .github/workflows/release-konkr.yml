@@ -1,11 +1,8 @@
 name: Release Konkr
 
 # Builds the signed RuneLite (Konkr) release APK and publishes it as a GitHub Release.
-# Starts when:
-#   - a tag named konkr-* is pushed (the release uses that tag), e.g.
-#       git tag konkr-1.13.0-1.0.29 main && git push origin konkr-1.13.0-1.0.29
-#   - it's run by hand from the Actions tab (Run workflow)
-#   - the upstream sync merges a new upstream version
+# Run by hand from the Actions tab, or by the upstream sync after it merges a new
+# upstream version.
 #
 # Every release must be signed with the same key, or Android refuses to install it over
 # the previous one. The key comes from these repository secrets; the workflow stops if
@@ -16,9 +13,6 @@ name: Release Konkr
 #   KONKR_KEY_PASSWORD      key password
 
 on:
-  push:
-    tags:
-      - "konkr-*"
   workflow_dispatch:
     inputs:
       ref:
@@ -65,7 +59,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || (github.event_name == 'push' && github.ref) || 'main' }}
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -121,13 +115,8 @@ jobs:
           app="$major.$minor.$patch"
           sha=$(git rev-parse HEAD)
 
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            # Started by pushing a konkr-* tag: publish under that tag.
-            tag="$GITHUB_REF_NAME"
-          else
-            tag="konkr-${rl}-${app}"
-          fi
-          if [ "$GITHUB_EVENT_NAME" != "push" ] && gh release view "$tag" >/dev/null 2>&1; then
+          tag="konkr-${rl}-${app}"
+          if gh release view "$tag" >/dev/null 2>&1; then
             # Same versions as an earlier release (an upstream fix without a version bump).
             tag="${tag}-r${GITHUB_RUN_NUMBER}"
           fi
