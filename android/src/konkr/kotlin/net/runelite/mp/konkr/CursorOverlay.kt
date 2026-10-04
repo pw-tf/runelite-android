@@ -15,12 +15,15 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.runelite.mp.AwtPointer
+
+/** Pointer dot: radius, fill opacity and outline opacity. The click lands at its center. */
+private const val DOT_RADIUS_DP = 6f
+private const val DOT_FILL_ALPHA = 0.55f
+private const val DOT_OUTLINE_ALPHA = 0.5f
 
 /**
  * Drawn over the game viewport: runs the per-frame stick loop and paints the pointer
@@ -58,12 +61,14 @@ internal fun KonkrGameOverlay()
                 // Read inside draw so pointer motion only redraws, never recomposes.
                 val at = AwtPointer.windowToCompose(StickCursor.posX.floatValue, StickCursor.posY.floatValue)
                     ?: return@Canvas
-                val s = 20.dp.toPx()
-                val arrow = arrowPath(s)
-                translate(at.x, at.y) {
-                    drawPath(arrow, Color.White.copy(alpha = alpha))
-                    drawPath(arrow, Color.Black.copy(alpha = alpha), style = Stroke(width = 1.5.dp.toPx()))
-                }
+                val radius = DOT_RADIUS_DP.dp.toPx()
+                drawCircle(Color.White.copy(alpha = DOT_FILL_ALPHA * alpha), radius, center = at)
+                drawCircle(
+                    Color.Black.copy(alpha = DOT_OUTLINE_ALPHA * alpha),
+                    radius,
+                    center = at,
+                    style = Stroke(width = 1.dp.toPx()),
+                )
             }
         }
 
@@ -84,14 +89,3 @@ internal fun KonkrGameOverlay()
     }
 }
 
-/** Classic arrow pointer with its hotspot at (0, 0). */
-private fun arrowPath(size: Float): Path = Path().apply {
-    moveTo(0f, 0f)
-    lineTo(0f, size)
-    lineTo(size * 0.28f, size * 0.74f)
-    lineTo(size * 0.45f, size * 1.08f)
-    lineTo(size * 0.6f, size * 1.0f)
-    lineTo(size * 0.43f, size * 0.68f)
-    lineTo(size * 0.75f, size * 0.68f)
-    close()
-}
