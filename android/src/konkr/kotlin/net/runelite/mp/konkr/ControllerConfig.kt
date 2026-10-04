@@ -75,6 +75,7 @@ sealed class Action(val id: String, val label: String)
     object ToggleCursor : Action("toggle_cursor", "Stick cursor on/off")
     object ToggleKeyboard : Action("toggle_keyboard", "Show/hide keyboard")
     object OpenSettings : Action("open_settings", "Open controller settings")
+    object ToggleSidebar : Action("toggle_sidebar", "Show/hide sidebar")
 
     /** A keyboard key. [char] is what KEY_TYPED carries, or CHAR_UNDEFINED for none. */
     class Key(val vk: Int, val char: Char, name: String) : Action("key:$vk", "Key: $name")
@@ -109,7 +110,7 @@ sealed class Action(val id: String, val label: String)
             listOf(
                 None, MouseLeft, MouseRight, MouseMiddle, ScrollUp, ScrollDown,
                 HoldShift, HoldCtrl, HoldAlt,
-                PrecisionCursor, RecenterCursor, ToggleCursor, ToggleKeyboard, OpenSettings,
+                PrecisionCursor, RecenterCursor, ToggleCursor, ToggleKeyboard, OpenSettings, ToggleSidebar,
             ) + keys
         }
 
@@ -178,6 +179,8 @@ data class ControllerConfig(
     val highRefreshRate: Boolean = true,
     /** Small FPS / frame-time readout in the corner of the game. */
     val showFps: Boolean = false,
+    /** Sidebar (icon strip + panel) hidden for a full-width game. */
+    val sidebarHidden: Boolean = false,
 )
 {
     fun actionFor(keyCode: Int): Action? = bindings[keyCode]?.takeIf { it != Action.None }
@@ -202,6 +205,7 @@ data class ControllerConfig(
         put("sustainedPerformance", sustainedPerformance)
         put("highRefreshRate", highRefreshRate)
         put("showFps", showFps)
+        put("sidebarHidden", sidebarHidden)
         for ((code, action) in bindings) put("$BIND_PREFIX$code", action.id)
     }
 
@@ -276,6 +280,7 @@ data class ControllerConfig(
                 sustainedPerformance = bool("sustainedPerformance", d.sustainedPerformance),
                 highRefreshRate = bool("highRefreshRate", d.highRefreshRate),
                 showFps = bool("showFps", d.showFps),
+                sidebarHidden = bool("sidebarHidden", d.sidebarHidden),
             )
         }
     }

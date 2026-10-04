@@ -18,6 +18,12 @@ object FlavorHooks
     /** Panels to add to the nav strip and the panel registry. */
     val panels: List<FlavorPanel> = emptyList()
 
+    /** Whether the user can hide the whole sidebar (icon strip + panel). */
+    val sidebarCollapsible: Boolean = false
+
+    /** The sidebar was hidden or shown; lets the flavor persist the choice. */
+    fun onSidebarCollapsedChanged(collapsed: Boolean) {}
+
     fun onCreate(activity: ComponentActivity) {}
 
     /** Offered every key event before the game's own key handling. True consumes it. */

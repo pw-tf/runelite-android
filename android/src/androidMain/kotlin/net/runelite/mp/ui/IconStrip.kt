@@ -89,6 +89,15 @@ internal fun NavIconStrip(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(8.dp))
+        // Hide the whole sidebar (flavors that allow it); WindowImpl draws a corner tab
+        // to bring it back.
+        if (net.runelite.mp.flavor.FlavorHooks.sidebarCollapsible)
+        {
+            IconButton(label = "›", tooltip = "Hide sidebar", active = false, iconBitmap = null) {
+                WindowImpl.setSidebarCollapsed(true)
+            }
+            Spacer(Modifier.height(4.dp))
+        }
         // Our built-in Plugins icon — always at the top. Re-tapping the active icon
         // collapses the panel (state → null) so the user can reclaim the screen
         // without losing context.

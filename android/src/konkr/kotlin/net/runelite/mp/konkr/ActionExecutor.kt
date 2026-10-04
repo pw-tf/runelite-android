@@ -46,6 +46,7 @@ object ActionExecutor
             Action.ToggleCursor -> StickCursor.toggleEnabled()
             Action.ToggleKeyboard -> net.runelite.mp.ui.bridge.SoftKeyboardController.toggle()
             Action.OpenSettings -> net.runelite.mp.ui.WindowImpl.showPanel(KonkrSettings.KEY)
+            Action.ToggleSidebar -> net.runelite.mp.ui.WindowImpl.toggleSidebar()
             is Action.Key -> keyDown(action.vk, action.char)
         }
     }

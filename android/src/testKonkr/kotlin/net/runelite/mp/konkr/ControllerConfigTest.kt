@@ -31,6 +31,7 @@ class ControllerConfigTest
             sustainedPerformance = true,
             highRefreshRate = false,
             showFps = true,
+            sidebarHidden = true,
         )
         assertEquals(cfg, ControllerConfig.fromMap(cfg.toMap()))
     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -66,6 +67,7 @@ object WindowImpl
     fun showPanel(key: String)
     {
         if (key != NAV_KEY_PLUGINS && !net.runelite.mp.ui.panels.PanelRegistry.hasPanel(key)) return
+        setSidebarCollapsed(false)
         selectedKey.value = key
         if (key != NAV_KEY_PLUGINS) configTarget.value = null
     }
@@ -86,6 +88,22 @@ object WindowImpl
         }
     }
 
+    /**
+     * Whole sidebar (icon strip + content panel) hidden so the game gets the full width.
+     * Only reachable when the build flavor allows it (FlavorHooks.sidebarCollapsible);
+     * the flavor also persists it via FlavorHooks.onSidebarCollapsedChanged.
+     */
+    val sidebarCollapsed = mutableStateOf(false)
+
+    fun setSidebarCollapsed(collapsed: Boolean)
+    {
+        if (sidebarCollapsed.value == collapsed) return
+        sidebarCollapsed.value = collapsed
+        net.runelite.mp.flavor.FlavorHooks.onSidebarCollapsedChanged(collapsed)
+    }
+
+    fun toggleSidebar() = setSidebarCollapsed(!sidebarCollapsed.value)
+
     /** Flipped to true by [net.runelite.mp.AppAndroidKt.ComposeSplash] once the AWT
      *  splash has come and gone. The chrome (icon strip + content panel) stays
      *  hidden until boot completes so users don't see a sidebar pinned beside the
@@ -103,7 +121,7 @@ object WindowImpl
                 // Chrome (content panel + icon strip) doesn't render at all until
                 // the splash dismisses — otherwise the user sees a pinned sidebar
                 // floating beside the boot splash during the long initial load.
-                if (bootComplete.value)
+                if (bootComplete.value && !sidebarCollapsed.value)
                 {
                     // Compose-native content column. Renders for our synthetic "Plugins"
                     // key AND for any nav button whose tooltip has a Compose replacement
@@ -128,6 +146,21 @@ object WindowImpl
                             if (key != NAV_KEY_PLUGINS) configTarget.value = null
                         },
                     )
+                }
+            }
+            if (bootComplete.value && sidebarCollapsed.value)
+            {
+                // Sidebar hidden: a small corner tab brings it back.
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(bottomStart = 8.dp))
+                        .background(RlPalette.DarkerGray.copy(alpha = 0.75f))
+                        .clickable { setSidebarCollapsed(false) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("‹", color = RlPalette.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

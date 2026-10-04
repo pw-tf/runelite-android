@@ -10,6 +10,7 @@ import net.runelite.mp.konkr.GamepadInput
 import net.runelite.mp.konkr.KonkrGameOverlay
 import net.runelite.mp.konkr.KonkrSettings
 import net.runelite.mp.konkr.PerformanceManager
+import net.runelite.mp.ui.WindowImpl
 
 /**
  * Flavor extension points for the Konkr Pocket Fit Elite build: gamepad input, the
@@ -22,9 +23,16 @@ object FlavorHooks
         FlavorPanel(KonkrSettings.KEY, "🎮") { KonkrSettings.Panel() },
     )
 
+    val sidebarCollapsible: Boolean = true
+
+    fun onSidebarCollapsedChanged(collapsed: Boolean) =
+        ControllerStore.update { it.copy(sidebarHidden = collapsed) }
+
     fun onCreate(activity: ComponentActivity)
     {
         ControllerStore.init(activity)
+        // Restore the last hidden/shown state directly, without re-saving it.
+        WindowImpl.sidebarCollapsed.value = ControllerStore.current.sidebarHidden
         GamepadInput.init(activity)
         PerformanceManager.onCreate(activity)
     }
