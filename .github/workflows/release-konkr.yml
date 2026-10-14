@@ -100,6 +100,10 @@ jobs:
             echo "runeliteMp.signing.keyPassword=$KEY_PASS"
           } >> local.properties
 
+      # GitHub's runner images drop older NDKs; install the one android-awt pins.
+      - name: Install Android NDK
+        run: ./ci/install-ndk.sh
+
       - name: Test and build
         run: ./gradlew --build-cache :android:testKonkrDebugUnitTest :android:assembleKonkrRelease
 

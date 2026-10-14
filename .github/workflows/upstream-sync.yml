@@ -93,6 +93,11 @@ jobs:
         if: steps.merge.outputs.merged == 'true'
         run: ./ci/fetch-injected-client.sh
 
+      # GitHub's runner images drop older NDKs; install the one android-awt pins.
+      - name: Install Android NDK
+        if: steps.merge.outputs.merged == 'true'
+        run: ./ci/install-ndk.sh
+
       - name: Check the merged build
         if: steps.merge.outputs.merged == 'true'
         run: ./gradlew --build-cache :android:testKonkrDebugUnitTest :android:assembleKonkrDebug

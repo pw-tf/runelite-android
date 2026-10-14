@@ -52,6 +52,10 @@ jobs:
       - name: Fetch injected client
         run: ./ci/fetch-injected-client.sh
 
+      # GitHub's runner images drop older NDKs; install the one android-awt pins.
+      - name: Install Android NDK
+        run: ./ci/install-ndk.sh
+
       - name: Build and Test
         run: ./ci/build.sh
 
